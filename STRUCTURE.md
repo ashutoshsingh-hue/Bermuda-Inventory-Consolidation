@@ -35,44 +35,64 @@
 
 ```
 bermuda-sort-station/
+├── README.md               # entry point: quick start, where to read next
 ├── PLAN.md                 # complete plan (rules, tests, milestones) — read first
 ├── STRUCTURE.md            # this file
-├── CLAUDE.md               # instructions for Claude Code (see §9)
-├── RUNBOOK.md              # floor ops: start/stop, IP, backup/restore (M5)
+├── CLAUDE.md               # working rules for Claude Code / contributors (see §9)
+├── RUNBOOK.md              # floor ops: users, backups, dump lifecycle, stations, known gaps
+├── HANDOFF.md              # current status and open items
+├── Dockerfile              # for IT hosting (plain HTTP; TLS at the reverse proxy)
 ├── package.json
 ├── .env.example            # PORT=8080, DB_PATH=data/bermuda.db, TZ=Asia/Kolkata
 │
 ├── src/
-│   ├── server.js           # boot: open DB → load state → start HTTP on 0.0.0.0:PORT
-│   ├── config.js           # env + defaults (shift times, port, paths)
+│   ├── server.js           # boot: open DB → load state → listen. With certs/: app on 127.0.0.1:PORT+1
+│   │                       #   behind portMux on 0.0.0.0:PORT; without certs/: plain HTTP on 0.0.0.0:PORT
+│   ├── portMux.js          # one port for HTTP + HTTPS (first byte 0x16 = TLS); phone camera needs HTTPS
+│   ├── config.js           # env + defaults (shift labels, port, paths)
 │   │
-│   ├── core/               # PURE logic — no HTTP, no DB, no Date.now() inside (time is passed in)
-│   │   ├── state.js        # newState(), settings, buildLocations(), recount()
+│   ├── core/               # PURE logic — no HTTP, no DB, no fs, no Date.now() (time is passed in)
+│   │   ├── state.js        # newState(), settings, buildLocations() (A1 T01-20, A2 T21-40, A3 T41-60), recount()
+│   │   ├── settings.js     # layout / eligibility settings, validation
 │   │   ├── csv.js          # parseCSV() — text-only parsing, BOM-safe
 │   │   ├── dump.js         # loadDump() — merge rules (new / refresh / skip taken / conflicts)
-│   │   ├── labels.js       # normalize() — LEFT(12) tote / RIGHT(12) barcode
+│   │   ├── newDump.js      # dump lifecycle: continue (keep aisle stock) / fresh / remove, checkDump()
+│   │   ├── preload.js      # existing aisle stock preload (API only, no UI)
+│   │   ├── labels.js       # normalize() — tote = LEFT(12), barcode = RIGHT(12)
 │   │   ├── allocate.js     # assign(), outstanding(), trimReservations()
-│   │   ├── scan.js         # scan(st, station, raw, now), undoLast(st, station), finishTote(st, station, now)
-│   │   ├── handover.js     # handoverSuggestion(C,R,N), buildHandover(), handOver()
-│   │   ├── recommend.js    # recommend(st, {limit, excludeTotes})
-│   │   ├── shift.js        # shiftOf(date), shiftEnd(date), minutesToShiftEnd()
+│   │   ├── scan.js         # scan(st, station, raw, now), undoLast(), finishTote()
+│   │   ├── handover.js     # handoverSuggestion(C,R,N), buildHandover(), handOver(), releaseFromLocation()
+│   │   ├── recommend.js    # recommend(st, {limit, excludeTotes}) — the "UP NEXT" ranking
+│   │   ├── route.js        # active batch (route) state, per-batch reservations
+│   │   ├── routePlanner.js # waiting totes → rounds of settings.batchSize (50)
+│   │   ├── missingTote.js  # NOT FOUND totes: mark / reinstate
+│   │   ├── evaluate.js     # per-PID evaluation used by handover and status
+│   │   ├── forecast.js     # capacity forecast / warning
+│   │   ├── summary.js      # KPIs
+│   │   ├── shift.js        # shiftOf(date) — A/B/OFF label for audit only; gates nothing
+│   │   ├── clone.js        # snapshot/restore helpers for rollback
 │   │   └── index.js        # re-exports (the only import point for services/)
 │   │
 │   ├── db/
 │   │   ├── schema.sql      # tables in §5
-│   │   ├── migrate.js      # create/upgrade schema (PRAGMA user_version)
+│   │   ├── migrate.js      # create/upgrade schema (PRAGMA user_version, currently v5)
 │   │   ├── load.js         # DB → in-memory state at boot
 │   │   └── persist.js      # write-through helpers: saveBarcode, saveLoc, saveTote, appendEvent …
 │   │
 │   ├── services/           # glue: call core, persist the diff, all inside ONE transaction
-│   │   ├── mutate.js       # runMutation(fn) → db.transaction(() => { fn(); persist; event })()
-│   │   ├── scanService.js
-│   │   ├── toteService.js  # finish, force-release
-│   │   ├── dumpService.js
-│   │   ├── handoverService.js
-│   │   ├── stationService.js
-│   │   ├── authService.js  # login (station + name + PIN), sessions, roles
-│   │   ├── importPilot.js  # one-time import of pilot backup JSON
+│   │   ├── mutate.js       # runMutation / runStationAction (event or events[])
+│   │   ├── scanService.js  # scan, undo, per-station next-tote offers
+│   │   ├── toteService.js  # finish, mark missing, reinstate, force-release
+│   │   ├── dumpService.js  # upload (merge), info
+│   │   ├── resetService.js # continue / fresh / remove dump, clear-all, backup restore (backup first)
+│   │   ├── routeService.js # propose / start / complete batch, history
+│   │   ├── handoverService.js        # at-risk release
+│   │   ├── consolidationService.js   # "Where things are", release, release-many, release-all
+│   │   ├── handoverLogService.js     # handover log (reads events) + CSV
+│   │   ├── stationService.js, authService.js (login, sessions, roles, users)
+│   │   ├── statusService.js, lookupService.js, alertsService.js, simReportService.js, settingsService.js
+│   │   ├── recount.js      # self-healing recount (no UI)
+│   │   ├── importPilot.js  # one-time import of pilot backup JSON (no UI, untested on real export)
 │   │   └── exportService.js# CSVs with UTF-8 BOM
 │   │
 │   ├── api/
@@ -81,38 +101,39 @@ bermuda-sort-station/
 │   │   └── errors.js       # uniform {ok:false, error} responses
 │   │
 │   └── jobs/
-│       └── nightlyBackup.js# 22:15 copy of DB file → backups/, keep 14 days
+│       └── nightlyBackup.js# 22:15 online backup → backups/, newest 2 kept
 │
 ├── public/                 # static pages served by the server (no build step)
-│   ├── station/            # operator screen: login, scan, finish, next tote, OFFLINE
+│   ├── station/            # operator screen: login, scan, finish, next tote, OFFLINE, camera
 │   │   ├── index.html
 │   │   ├── station.js
+│   │   ├── camera.js       # phone-camera scanning (ZXing); button only shown on HTTPS/localhost
 │   │   └── station.css
-│   ├── admin/              # lead/admin: dump, handover, lookup, status, station board, alerts, settings
+│   ├── admin/              # lead/admin tabs: Status, Route, Dump, Not found, Handover, Handover log, Users, Exports, Settings
 │   │   ├── index.html
-│   │   ├── admin.js
+│   │   ├── admin.js        # the startup line must stay LAST in this file
 │   │   └── admin.css
-│   └── shared/
-│       ├── api.js          # fetch wrapper, token, OFFLINE detection (3 s)
-│       ├── sounds.js       # ok / error beeps
-│       └── ui.css          # colours: place green, extra orange, aside grey, error red, tote purple
+│   ├── shared/
+│   │   ├── api.js          # fetch wrapper, token, OFFLINE detection
+│   │   ├── sounds.js       # ok / error beeps
+│   │   └── ui.css          # colours: place green, extra orange, aside grey, error red, tote purple
+│   ├── vendor/zxing.min.js # ZXing decoder (local copy, no CDN)
+│   └── scan-test.html      # standalone camera test page (prototype, no server calls)
 │
-├── test/
-│   ├── fixtures/
-│   │   └── sample_dump.csv # 25-09-2026 export (or a trimmed copy) — never edited
-│   ├── core/
-│   │   ├── handover.test.js    # the 6-row table in PLAN §5.3
-│   │   ├── labels.test.js      # LEFT/RIGHT 12 cases
-│   │   ├── allocate.test.js    # cap 100 / plan 95 / 20 PIDs, NO SPACE when full, never move
-│   │   ├── dump.test.js        # counts, skip taken, conflicts, mangled tote_simplified ignored
-│   │   └── recommend.test.js   # excludes open totes, N stations get N different totes
-│   ├── replay.test.js          # full backlog with 2 / 4 / 8 stations → 0 NO SPACE, recount OK
-│   └── concurrency.test.js     # 8 stations × 300 parallel HTTP scans → no overfill, no double place
+├── test/                   # node:test — api/, core/, db/, jobs/, services/, helpers/, replay + concurrency
+│   ├── core/*.test.js      # rules: handover table (§5.3), labels, allocate, dump, recommend, routes, scan …
+│   ├── api/*.test.js       # HTTP: routes, admin, offers, route, newDump
+│   ├── replay.test.js      # full backlog with 2 / 4 / 8 stations → 0 NO SPACE, recount OK
+│   ├── replayRealDump.test.js # skips itself when the real CSV is absent
+│   └── concurrency.test.js # parallel scans from many stations → no overfill, no double place
 │
+├── tools/
+│   ├── createUser.js       # node tools/createUser.js <name> <role> <pin> — first admin on a fresh DB
+│   └── httpsProxy.js       # prototype TLS proxy (superseded by portMux.js)
+├── deploy/                 # setup-host.ps1 + README.md: firewall, certificate, startup task for a wired host
+├── certs/                  # key.pem / cert.pem — git-ignored (enables HTTPS)
 ├── data/                   # runtime DB (git-ignored)
-├── backups/                # nightly DB copies (git-ignored)
-└── reference/
-    └── pilot/Bermuda_Sort_Station.html   # the single-station pilot, for UI and logic reference
+└── backups/                # DB snapshots (git-ignored)
 ```
 
 ---
@@ -237,34 +258,38 @@ CREATE TABLE sessions   (token TEXT PRIMARY KEY, user_id INT, station_id INT, cr
 
 | Page | Users | Contents |
 |---|---|---|
-| `/station` | Operator | Login (station, name, PIN) → **Next tote** card (skips totes open elsewhere) → scan input (always focused) → big coloured result → tote progress, Undo, Finish tote → last scans. Full red **OFFLINE — STOP SCANNING** when the server can't be reached. Shift-end banner at T-45. |
-| `/admin` → Dump | Lead/Admin | Upload CSV, load report, ranked waiting totes |
-| `/admin` → Handover | Lead | Tick location/PID rows → **Release selected** (confirm popup). Release = handed over & processed; no separate Confirm button. At-risk list. Separate **/admin → Handover log** tab (not embedded in Handover): date range, **Export CSV**,, units processed, entries, PIDs, per-day totals, who/when/where/qty per release; reads `events`, no extra table) |
-| `/admin` → Stations | Admin | **Live station board** (operator, open tote, scans/hour, last seen); add/rename/deactivate stations; force-release tote |
-| `/admin` → Lookup | All | PID / location / barcode search |
-| `/admin` → Status | All | KPIs, aisle fill map (440 cells), alerts, CSV exports |
-| `/admin` → Settings | Admin | Layout, capacity, headroom, PID cap, handover interval, users & PINs, pilot import |
+| `/station/` | Operator | Login (station, name, PIN) → its own **next tote** offer (held from other stations 2 min) → scan input (always focused) or **Scan with camera** (HTTPS only) → big coloured result (location / PID / barcode, auto-fitted, never wraps) → tote progress, Undo, Finish tote. Wide screens: fixed viewport, 70% scanner / 30% info, top banner = route no., current tote + done/expected, totes done x/y (polls `/api/route-progress` every 2 s). Full red **OFFLINE — STOP SCANNING** when the server can't be reached. |
+| `/admin/` → Status | All | KPIs, live station board, station summary, aisle fill map (tooltip = current stock only), lookup (PID / location / barcode), alerts |
+| `/admin/` → Route | Lead/Admin | Active route progress, propose next 50-tote batch, Start route / Complete route, route history |
+| `/admin/` → Dump | Lead/Admin | Current data, upload (merge; admins also continue / fresh), remove dump, backups + restore (admin) |
+| `/admin/` → Not found | Lead/Admin | Totes marked NOT FOUND, Mark found |
+| `/admin/` → Handover | Lead/Admin | Rows with checkboxes (select all, Tick recommended, Clear ticks), sortable columns → **Release selected (N)** with a confirm popup. Release = handed over and processed; no separate confirm step. Capacity warning. |
+| `/admin/` → Handover log | Lead/Admin | Date range (Today / All time), KPIs, table time/shift/by/type/location/PID/qty, **Export CSV**. Reads `events`; no extra table. |
+| `/admin/` → Users | Admin | Create / deactivate / reactivate users (stations appear automatically at first login) |
+| `/admin/` → Exports | Admin | locations, notfound, events, missingtotes, aislestock CSVs |
+| `/admin/` → Settings | Admin | Layout, capacity, headroom, PID cap, batch size, eligibility values (layout edits only while the rack is empty) |
 
 ---
 
 ## 8. Configuration & conventions
 
-- **Time:** all timestamps are local `Asia/Kolkata` strings `YYYY-MM-DD HH:MM:SS`. Shift comes from `shift.js` (A 06–14, B 14–22, else OFF).
+- **Time:** all timestamps are local `Asia/Kolkata` strings `YYYY-MM-DD HH:MM:SS`. `shift.js` only labels events A 06–14, B 14–22, else OFF (audit/reporting); nothing is gated by shift.
 - **IDs:** tote IDs and barcodes are uppercase strings, PIDs are strings. Never convert any of them to numbers.
 - **CSV out:** UTF-8 with BOM, CRLF, quoted when needed, so Excel opens it cleanly.
-- **Settings defaults (rev. 03-Oct-2026):** aisles 3, totes/aisle 20, last aisle 20 totes (240 locations total, no overflow), cap 100, headroom 5%, max PIDs 20, batch size 50, handover interval = shift end, tote overhead in the score = 15.
+- **Settings defaults (rev. 03-Oct-2026):** aisles 3, totes/aisle 20, last aisle 20 totes (240 locations total, no overflow), cap 100, headroom 5%, max PIDs 20, batch size 50, tote overhead in the score = 15. Station count is unlimited.
 - **Logging:** every mutation writes one `events` row, and nothing is ever deleted. Reports read from `events`.
 - **No silent failures:** any unexpected error turns the station screen red with "Call admin" and logs the error on the server.
 
 ---
 
-## 9. Suggested `CLAUDE.md`
+## 9. `CLAUDE.md` (working rules — the file in the repo root is authoritative)
 
 ```md
 # Bermuda Sort Station
 - Read PLAN.md and STRUCTURE.md before any change.
 - Business rules in PLAN.md §5 are fixed. Do not change them without the owner's approval.
-- core/ must stay pure (no db/http/fs, time passed in). Port logic from PLAN.md Appendix A; don't redesign it.
+- core/ must stay pure (no db/http/fs, time passed in). Appendix A is historical; the current rules are PLAN.md §5 (rev. 03-Oct-2026).
+- Space is reserved per active batch (route), never for the whole dump.
 - Build one milestone at a time (PLAN.md §11). Run `npm test` and keep it green before moving on.
 - Never convert pid/barcode/tote to numbers. Never trust tote_simplified.
 - Any number of stations: nothing may assume a fixed station count.
@@ -281,3 +306,4 @@ CREATE TABLE sessions   (token TEXT PRIMARY KEY, user_id INT, station_id INT, cr
 | M3 Station screens (N stations) | `src/api/*`, `scanService`, `toteService`, `stationService`, `authService`, `public/station/*`, `test/concurrency.test.js` |
 | M4 Lead/admin | `dumpService`, `handoverService`, `exportService`, `public/admin/*` |
 | M5 Hardening | `src/jobs/nightlyBackup.js`, `RUNBOOK.md`, Dockerfile (for IT) |
+| Post-M5 additions | `core/route*.js`, `routeService`, `resetService`, `consolidationService`, `handoverLogService`, `portMux.js`, `public/station/camera.js`, `tools/`, `deploy/` |
