@@ -111,8 +111,8 @@
 
     <details id="aislestock-card" class="card collapsible">
       <summary><h2>Aisle stock — move progress to a new site (rarely needed)</h2></summary>
-      <p class="msg"><b>Step 1.</b> On the OLD site, press "Download aisle stock" (admin) to save what is on the racks now. <b>Step 2.</b> On the NEW (empty) site, upload that file here, <b>before</b> the dump. <b>Step 3.</b> Upload the PID Hunter dump below with "Add to the current data": barcodes already on the racks are not placed again and totes that are already sorted close themselves.</p>
-      <p class="msg">The file needs the columns <code>location, pid, barcode</code> (and <code>tote</code>, which the download includes). Uploading again replaces an earlier upload that is still on the racks.</p>
+      <p class="msg"><b>Step 1.</b> On the OLD site, press "Download aisle stock" (admin). The file carries everything: barcodes on the racks, handed-over, set-aside and not-found barcodes, and the totes already done. <b>Step 2.</b> On the NEW (empty) site, upload that file here, <b>before</b> the dump. <b>Step 3.</b> Upload the PID Hunter dump below with "Add to the current data": done totes are skipped as usual, and nothing on the racks or already handed over is placed again.</p>
+      <p class="msg">The file needs the columns <code>location, pid, barcode</code> (the download adds <code>tote, state, at, processable, tote_number</code>). Rows that clash are listed below and skipped; nothing else is blocked. Uploading the same file again is harmless.</p>
       <div class="row">
         <button class="secondary admin-only" id="aislestock-download-btn">Download aisle stock</button>
         <input type="file" id="aislestock-file" accept=".csv">

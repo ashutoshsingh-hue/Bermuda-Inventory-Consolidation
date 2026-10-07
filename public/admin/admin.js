@@ -268,7 +268,8 @@ document.getElementById('aislestock-upload-btn').addEventListener('click', async
   const res = await fetch('/api/preload', { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: form });
   const body = await res.json();
   if (!res.ok) { msg.textContent = body.error || 'Upload failed'; msg.className = 'msg error'; return; }
-  msg.textContent = `Loaded ${body.added} barcodes, ${body.pids} PIDs, ${body.locs} locations.` + (body.bad.length ? ` ${body.bad.length} row(s) skipped (see below).` : '');
+  const extra = [[body.handedOver, 'handed over'], [body.setAside, 'set aside'], [body.notFound, 'not found'], [body.totesDone, 'done totes']].filter(x => x[0]).map(x => `${x[0]} ${x[1]}`).join(', ');
+  msg.textContent = `Loaded ${body.added} barcodes on the racks (${body.pids} PIDs, ${body.locs} locations)` + (extra ? `, ${extra}` : '') + '.' + (body.bad.length ? ` ${body.bad.length} row(s) skipped (see below).` : '');
   msg.className = 'msg ' + (body.bad.length ? 'error' : 'ok');
   report.textContent = JSON.stringify(body, null, 2);
   loadDumpInfo();

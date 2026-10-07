@@ -58,12 +58,25 @@ export function createExportService({ app, db }) {
     return toCsv(rows);
   }
 
-  // what's currently placed, for the preload recovery flow's "download current aisle stock" step
+  // everything needed to rebuild the floor on a new site (preload flow): done totes (C), placed (P), handed over (O),
+  // set aside (X) and not-found (N, only for done totes) barcodes. Old 4-column files (location,pid,barcode,tote)
+  // still upload as all-placed.
   function aisleStockCsv() {
-    const rows = [['location', 'pid', 'barcode', 'tote']];
+    const rows = [['location', 'pid', 'barcode', 'tote', 'state', 'at', 'processable', 'tote_number']];
+    for (const t in app.st.totes) {
+      const T = app.st.totes[t];
+      if (T.s === 'C') rows.push(['', '', '', t, 'C', T.closedAt || '', '', T.n || '']);
+    }
     const entries = [];
-    for (const b in app.st.barcodes) { const B = app.st.barcodes[b]; if (B.s === 'P') entries.push([B.l, B.p, b, B.t]); }
-    entries.sort((x, y) => x[0].localeCompare(y[0]) || x[1].localeCompare(y[1]));
+    for (const b in app.st.barcodes) {
+      const B = app.st.barcodes[b];
+      if (B.s === 'P') entries.push([B.l, B.p, b, B.t, 'P', B.ts || '', B.pr ? 1 : 0, '']);
+      else if (B.s === 'O') entries.push([B.l || '', B.p, b, B.t, 'O', B.hoAt || '', B.pr ? 1 : 0, '']);
+      else if (B.s === 'X') entries.push([B.l || '', B.p, b, B.t, 'X', B.ts || '', B.pr ? 1 : 0, '']);
+      else if (B.s === 'N' && app.st.totes[B.t]?.s === 'C') entries.push(['', B.p, b, B.t, 'N', B.nfAt || '', B.pr ? 1 : 0, '']);
+    }
+    const rank = { P: 0, O: 1, X: 2, N: 3 };
+    entries.sort((x, y) => rank[x[4]] - rank[y[4]] || String(x[0]).localeCompare(String(y[0])) || x[1].localeCompare(y[1]));
     rows.push(...entries);
     return toCsv(rows);
   }

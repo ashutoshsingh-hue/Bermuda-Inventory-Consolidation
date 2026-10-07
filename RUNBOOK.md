@@ -142,17 +142,21 @@ settings always survive. Totes an operator couldn't find are listed under the **
 tote's label again reinstates it, or a lead clicks "Mark found".
 
 **Moving progress to a new site (or recovering after data loss) — Dump tab -> "Aisle stock":**
-1. On the old site (admin): **Download aisle stock** (`location,pid,barcode,tote` of everything on the racks).
+1. On the old site (admin): **Download aisle stock**. One file with everything: barcodes on the racks (P), handed over (O),
+   set aside (X), not found in done totes (N) and the done totes themselves (C). Columns:
+   `location,pid,barcode,tote,state,at,processable,tote_number`.
 2. On the new, empty site: **Upload aisle stock** (lead/admin) *before* the dump. Uploading again replaces an
    earlier upload that is still on the racks.
-3. Upload the PID Hunter dump with **Add to the current data**. Barcodes already on the racks are not placed
-   again, and totes that are at least `autoCloseSharePct` (90%) sorted close themselves; totes below that are
-   flagged "partly sorted" and stay waiting for their remaining barcodes.
+3. Upload the PID Hunter dump with **Add to the current data**. Done totes are skipped (they show as "taken"),
+   barcodes on the racks or already handed over are not placed again, and totes that are at least
+   `autoCloseSharePct` (90%) sorted close themselves as usual.
 
-Limits (tested on a real backup: 11,890 barcodes carried over exactly; 35 of 41 done totes closed, 6 stayed
-partial at 82-89%): barcodes already **handed over** are not in the aisle stock file, so if the new dump still
-contains them they come back as waiting. Not-found and set-aside barcodes also return as waiting. Download the
-Handover log CSV from the old site as the record of what was processed.
+Tested on a real backup into an empty database: all 11,890 rack barcodes, 392 handed over, 523 set aside, 212 not found
+and 41 done totes carried over exactly, with 0 clashes; the dump then skipped the 41 done totes. Clashes (for example a
+barcode both placed and handed over in the file, or an unknown state) are listed and skipped, and uploading the same
+file twice changes nothing. **Not carried:** a tote marked NOT FOUND on the floor (state M) comes back as waiting
+(mark it again if still missing), and open totes return to waiting. Download the Handover log CSV from the old site
+as the record of what was processed.
 
 ## 8. Known gaps (ask the owner before assuming behavior)
 

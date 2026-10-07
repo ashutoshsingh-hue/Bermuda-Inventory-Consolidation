@@ -6,6 +6,13 @@
  * see them as already there — then loadDump()'s "already sorted" reconciliation and
  * evaluateTotes()'s auto-close take it from there once the main dump lands on top of it.
  * Uploading again replaces the earlier preload (only the parts still sitting in the aisles).
+ *
+ * Full migration (new site): with a barcode column the file may also carry optional columns
+ *   state (P placed = default | O handed over | X set aside | N not found | C tote done), at (timestamp),
+ *   processable (1/0), tote_number. A C row (tote only) recreates a finished tote, so the dump skips it as usual.
+ * O, X and N rows restore those barcodes WITHOUT touching rack space, so when the dump lands on top
+ * (loadDump treats P/O/X as "already sorted") nothing handed over is offered or placed again.
+ * O/X rows are additive and idempotent: a barcode already O/X is counted as a duplicate, not an error.
  */
 import { parseCSV } from './csv.js';
 import { pid, locByCode, recount, touch } from './state.js';
@@ -20,6 +27,7 @@ export function preloadStock(st, text, fileName, now = new Date()) {
   const qc = ['qty', 'pull_qty', 'placed', 'quantity', 'count'].find(c => c in ix), byBarcode = 'barcode' in ix;
   if (!('location' in ix) || !('pid' in ix) || (!qc && !byBarcode)) return { ok: false, error: 'Need columns: location, pid and barcode (best) or qty' };
   const s = st.settings, ts = nowISO(now), bad = [], over = [];
+  let handedOver = 0, setAside = 0, notFound = 0, totesDone = 0, dupes = 0;
 
   // replace any earlier preload that is still sitting in the aisles
   let removed = 0;
@@ -37,7 +45,38 @@ export function preloadStock(st, text, fileName, now = new Date()) {
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r]; const loc = (row[ix.location] || '').trim().toUpperCase(), p = (row[ix.pid] || '').trim();
     const bc = byBarcode ? (row[ix.barcode] || '').trim().toUpperCase() : '', q = byBarcode ? (bc ? 1 : 0) : parseInt(row[ix[qc]], 10);
+    const stRaw = byBarcode && ('state' in ix) ? (row[ix.state] || '').trim().toUpperCase() : '';
+    if (stRaw === 'C') { // finished tote: later dumps skip it ("taken tote"), exactly as on the old site
+      const t = ('tote' in ix) ? (row[ix.tote] || '').trim().toUpperCase() : '';
+      if (!t) { bad.push(`row ${r + 1}: C row needs a tote`); continue; }
+      const at = ('at' in ix) ? (row[ix.at] || '').trim() : '';
+      const num = ('tote_number' in ix) ? (row[ix.tote_number] || '').trim() : '';
+      const T = st.totes[t];
+      if (T) { if (T.s === 'C') { dupes++; continue; } bad.push(`row ${r + 1}: tote ${t} is already ${T.s} here, not marked done`); continue; }
+      st.totes[t] = { n: num, s: 'C', bs: [], load: 0, closedAt: at || ts };
+      touch(st, 'totes', t); totesDone++;
+      continue;
+    }
     if (!loc && !p) continue;
+    if (stRaw && stRaw !== 'P') {
+      if (stRaw !== 'O' && stRaw !== 'X' && stRaw !== 'N') { bad.push(`row ${r + 1}: unknown state "${stRaw}" for ${bc}`); continue; }
+      if (!bc || !p) { bad.push(`row ${r + 1}: ${stRaw} row needs pid and barcode`); continue; }
+      const ex = st.barcodes[bc];
+      if (ex && (ex.s === 'O' || ex.s === 'X' || ex.s === 'N')) { dupes++; continue; }
+      if (ex && ex.s === 'P') { bad.push(`row ${r + 1}: ${bc} is ${stRaw} in the file but placed at ${ex.l}`); continue; }
+      const src = ('tote' in ix) ? (row[ix.tote] || '').trim().toUpperCase() : '';
+      const at = ('at' in ix) ? (row[ix.at] || '').trim() : '';
+      const pr = ('processable' in ix) ? (row[ix.processable] || '').trim() !== '0' : true;
+      const base = ex || { t: src || 'PRELOAD', pt: '', pr: pr ? 1 : 0 };
+      if (stRaw === 'O') { Object.assign(base, { p, s: 'O', hoAt: at || ts, st: 'PRELOAD' }); if (LOC_RE.test(loc)) base.l = loc; handedOver++; }
+      else if (stRaw === 'X') { Object.assign(base, { p, s: 'X', ts: at || ts, st: 'PRELOAD' }); setAside++; }
+      else { Object.assign(base, { p, s: 'N', nfAt: at || ts, st: 'PRELOAD' }); notFound++; }
+      st.barcodes[bc] = base; pid(st, p);
+      if (!ex && st.totes[base.t] && !st.totes[base.t].bs.includes(bc)) st.totes[base.t].bs.push(bc);
+      touch(st, 'barcodes', bc);
+      pids.add(p);
+      continue;
+    }
     const L = LOC_RE.test(loc) ? locByCode(st, loc) : null;
     if (!L || !p || !(q > 0)) { bad.push(`row ${r + 1}: ${loc || '?'} / ${p || '?'} / ${row[ix[qc]] || '?'}`); continue; }
     const P = pid(st, p), e = L.pids[p] || (L.pids[p] = { c: 0, r: 0 }); P.locs[L.code] = 1;
@@ -62,7 +101,7 @@ export function preloadStock(st, text, fileName, now = new Date()) {
   }
   recount(st);
   const ev = evaluateTotes(st, now);
-  st.alerts.push({ ts, type: 'PRELOAD', msg: `Existing aisle stock loaded from ${fileName}: ${added} barcodes, ${pids.size} PIDs, ${locs.size} locations${removed ? ` (replaced earlier preload of ${removed})` : ''}` });
-  st.log.push([ts, shiftOf(now), '', '', 'preload', '', String(added)]);
-  return { ok: true, added, lines, pids: pids.size, locs: locs.size, removed, bad, over: [...new Set(over)], byBarcode, autoClosed: ev.closed, partial: ev.partial };
+  st.alerts.push({ ts, type: 'PRELOAD', msg: `Existing aisle stock loaded from ${fileName}: ${added} barcodes, ${pids.size} PIDs, ${locs.size} locations${handedOver ? `, ${handedOver} handed over` : ''}${setAside ? `, ${setAside} set aside` : ''}${notFound ? `, ${notFound} not found` : ''}${totesDone ? `, ${totesDone} done totes` : ''}${removed ? ` (replaced earlier preload of ${removed})` : ''}` });
+  st.log.push([ts, shiftOf(now), '', '', 'preload', '', String(added + handedOver + setAside)]);
+  return { ok: true, added, handedOver, setAside, notFound, totesDone, dupes, lines, pids: pids.size, locs: locs.size, removed, bad, over: [...new Set(over)], byBarcode, autoClosed: ev.closed, partial: ev.partial };
 }
