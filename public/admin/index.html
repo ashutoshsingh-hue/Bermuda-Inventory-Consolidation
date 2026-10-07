@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bermuda Sort Station — Admin</title>
+<link rel="stylesheet" href="/shared/ui.css">
+<link rel="stylesheet" href="/admin/admin.css">
+</head>
+<body>
+
+<div id="login-view" class="hidden">
+  <h1>Bermuda Sort Station — Admin</h1>
+  <div class="field"><label for="station-id">Station</label><input id="station-id" value="Admin"></div>
+  <div class="field"><label for="name">Your name</label><input id="name"></div>
+  <div class="field"><label for="pin">PIN</label><input id="pin" type="password" inputmode="numeric"></div>
+  <button id="login-btn">Log in</button>
+  <div id="login-error" class="msg error"></div>
+</div>
+
+<div id="app-view" class="wrap hidden">
+  <div class="topbar">
+    <h1>Bermuda Sort Station — Admin</h1>
+    <button id="logout-btn">Log out</button>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="status" class="active">Status</button>
+    <button data-tab="route">Route</button>
+    <button data-tab="dump">Dump</button>
+    <button data-tab="recovery">Not found</button>
+    <button data-tab="handover">Handover</button>
+    <button data-tab="hlog">Handover log</button>
+    <button data-tab="stations">Users</button>
+    <button data-tab="exports">Exports</button>
+    <button data-tab="settings">Settings</button>
+  </div>
+
+  <div id="panel-status" class="panel active">
+    <div class="card">
+      <h2>KPIs</h2>
+      <div class="kpis" id="kpis"></div>
+    </div>
+    <div class="card">
+      <h2>Live station board</h2>
+      <p class="msg">Active stations only (seen in the last 10 min, or holding an open tote). Release takes an open tote away from a station and puts it back in the waiting queue.</p>
+      <div id="station-board-msg" class="msg"></div>
+      <table><thead><tr><th>Station</th><th>Operator</th><th>Open tote</th><th>Scans/hr</th><th>Last seen</th><th></th></tr></thead>
+        <tbody id="station-board"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Station summary <span id="simreport-summary" class="msg"></span> <span id="simreport-clash-summary" class="msg"></span></h2>
+      <table><thead><tr><th>Station</th><th>Operator</th><th>Totes</th><th>Placed</th><th>Aside</th><th>Not found</th></tr></thead>
+        <tbody id="simreport-table"></tbody></table>
+    </div>
+    <div class="card">
+      <h2>Aisle fill</h2>
+      <div id="aisle-map"></div>
+    </div>
+    <div class="card">
+      <h2>Lookup — PID / location / barcode</h2>
+      <div class="row"><input type="text" id="lookup-q" placeholder="e.g. PID123, A1-T01-P1, or a barcode">
+        <button class="primary" id="lookup-btn">Search</button></div>
+      <pre id="lookup-result" style="white-space: pre-wrap; font-size: 0.85rem;"></pre>
+    </div>
+    <div class="card">
+      <h2>Alerts</h2>
+      <div class="row"><label><input type="checkbox" id="alerts-unresolved-only" checked> Unresolved only</label>
+        <button class="secondary" id="alerts-refresh-btn">Refresh</button></div>
+      <table><thead><tr><th>Time</th><th>Type</th><th>Message</th><th></th></tr></thead>
+        <tbody id="alerts-table"></tbody></table>
+    </div>
+  </div>
+
+  <div id="panel-route" class="panel">
+    <div id="route-active-card" class="card hidden">
+      <h2>Active route</h2>
+      <div class="kpis" id="route-active-kpis"></div>
+      <div class="row"><button class="danger" id="route-complete-btn">Complete route</button></div>
+      <div id="route-complete-msg" class="msg"></div>
+    </div>
+
+    <div id="route-propose-card" class="card">
+      <h2><span id="route-propose-title">Next route</span> <span id="route-propose-summary" class="msg"></span></h2>
+      <p class="msg">The remaining waiting totes are split into rounds of the batch size (Route 1, Route 2, ...). Start a route, finish it, and the next round is built from whatever is still waiting.</p>
+      <div class="row"><button class="secondary" id="route-propose-btn">Refresh</button>
+        <button class="primary hidden" id="route-start-btn">Start route</button></div>
+      <div id="route-propose-msg" class="msg"></div>
+      <div class="kpis" id="route-propose-kpis"></div>
+      <table><thead><tr><th>#</th><th>Tote no</th><th>Barcodes</th><th>Processable</th></tr></thead>
+        <tbody id="route-tote-table"></tbody></table>
+      <h3>Up next</h3>
+      <table><thead><tr><th>Route</th><th>Totes</th><th>First tote no</th><th>Last tote no</th></tr></thead>
+        <tbody id="route-upcoming-table"></tbody></table>
+    </div>
+
+    <div class="card">
+      <h2>Route history</h2>
+      <div class="row"><button class="secondary" id="route-history-refresh-btn">Refresh</button></div>
+      <table><thead><tr><th>Route</th><th>Status</th><th>Totes</th><th>Created</th><th>Completed</th></tr></thead>
+        <tbody id="route-history-table"></tbody></table>
+    </div>
+  </div>
+
+  <div id="panel-dump" class="panel">
+    <div class="card">
+      <h2>Current data</h2>
+      <div class="kpis" id="dump-info-kpis"></div>
+      <p class="msg" id="dump-info-text"></p>
+    </div>
+
+    <div id="dump-upload-card" class="card">
+      <h2>Upload PID Hunter dump</h2>
+      <div class="dump-modes">
+        <label><input type="radio" name="dump-mode" value="merge" checked> <b>Add to the current data</b> — normal merge: new totes are added, waiting totes refreshed, nothing is removed.</label>
+        <label class="admin-only"><input type="radio" name="dump-mode" value="continue"> <b>New dump — continue</b> — remove the old dump and all activity, but keep what is physically in the aisles. Only those barcodes are deducted from the new dump.</label>
+        <label class="admin-only"><input type="radio" name="dump-mode" value="fresh"> <b>New dump — start fresh</b> — remove everything, including the aisle stock, and start over from this file.</label>
+      </div>
+      <p class="msg admin-only">Continue and Start fresh save a backup first. The file is checked before anything is removed.</p>
+      <div class="row">
+        <input type="file" id="dump-file" accept=".csv">
+        <button class="primary" id="dump-upload-btn">Upload</button>
+      </div>
+      <div id="dump-msg" class="msg"></div>
+      <pre id="dump-report" style="white-space: pre-wrap; font-size: 0.85rem;"></pre>
+    </div>
+
+    <div id="dump-remove-card" class="card admin-only">
+      <h2>Remove the current dump</h2>
+      <p class="msg">Removes the dump and every activity on it (totes, scans, handovers, alerts, route history). A backup is saved first. Users, stations and layout settings are kept.</p>
+      <div class="row">
+        <button class="danger" id="dump-remove-continue-btn">Remove — keep aisle stock</button>
+        <button class="danger" id="dump-remove-fresh-btn">Remove everything</button>
+      </div>
+      <div id="dump-remove-msg" class="msg"></div>
+    </div>
+
+    <div id="dump-backups-card" class="card admin-only">
+      <h2>Backups</h2>
+      <p class="msg">Only the newest two are kept. Restoring one puts back its dump and activity (the data being replaced is saved as a backup first). Then upload the new dump with "continue" to use both together.</p>
+      <table><thead><tr><th>Backup</th><th>Saved</th><th>Size</th><th></th></tr></thead>
+        <tbody id="dump-backups-table"></tbody></table>
+      <div id="dump-restore-msg" class="msg"></div>
+    </div>
+  </div>
+
+  <div id="panel-recovery" class="panel">
+    <div class="card">
+      <h2>Totes marked NOT FOUND</h2>
+      <p class="msg">A waiting tote an operator couldn't locate on the floor. Scanning its label brings it back automatically — "Mark found" below does the same without a rescan.</p>
+      <div class="row"><button class="secondary" id="missing-refresh-btn">Refresh</button></div>
+      <table><thead><tr><th>Tote no</th><th>Tote ID</th><th>Processable</th><th>PIDs</th><th>Marked at</th><th>Reason</th><th></th></tr></thead>
+        <tbody id="missing-table"></tbody></table>
+    </div>
+  </div>
+
+  <div id="panel-handover" class="panel">
+    <div id="capacity-forecast-card" class="card hidden">
+      <h2>⚠ Capacity warning</h2>
+      <p class="msg" id="capacity-forecast-text"></p>
+      <div class="kpis" id="capacity-forecast-kpis"></div>
+      <p class="msg">Recommended releases (below) would free up locations for this known demand — tick and release them to relieve it.</p>
+    </div>
+
+    <div class="card">
+      <h2>Handover <span id="handover-summary" class="msg"></span></h2>
+      <div class="row"><button class="secondary" id="handover-refresh-btn">Refresh</button></div>
+      <div id="handover-msg" class="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Where things are</h2>
+      <div class="row">
+        <button class="secondary" id="handover-pick-rec-btn">Tick recommended</button>
+        <button class="secondary" id="handover-clear-btn">Clear ticks</button>
+        <button class="release" id="handover-release-btn" disabled>Release selected (0)</button>
+      </div>
+      <table><thead><tr><th><input type="checkbox" id="handover-all" title="Tick / untick all"></th><th class="sortable" data-sort="location">Location<span class="arrow"></span></th><th class="sortable" data-sort="pid">PID<span class="arrow"></span></th><th class="sortable" data-sort="qtyHere">Qty here<span class="arrow"></span></th><th class="sortable" data-sort="knownTotal">Known total<span class="arrow"></span></th><th class="sortable" data-sort="give">Give<span class="arrow"></span></th><th class="sortable" data-sort="why">Why<span class="arrow"></span></th><th class="sortable" data-sort="ageMinutes">Age<span class="arrow"></span></th></tr></thead>
+        <tbody id="handover-table"></tbody></table>
+    </div>
+  </div>
+
+  <div id="panel-hlog" class="panel">
+    <div class="card">
+      <h2>Handover log <span id="hlog-summary" class="msg"></span></h2>
+      <p class="msg">Quantity released and processed. Every release from the Handover tab is recorded here with who, when, where and how many.</p>
+      <div class="row">
+        <label class="msg">From <input type="date" id="hlog-from"></label>
+        <label class="msg">To <input type="date" id="hlog-to"></label>
+        <button class="secondary" id="hlog-today-btn">Today</button>
+        <button class="secondary" id="hlog-all-btn">All time</button>
+        <button class="secondary" id="hlog-refresh-btn">Refresh</button>
+        <button class="primary" id="hlog-export-btn">Export CSV</button>
+      </div>
+      <div class="kpis" id="hlog-kpis"></div>
+      <table><thead><tr><th>Time</th><th>Shift</th><th>By</th><th>Type</th><th>Location</th><th>PID</th><th>Qty processed</th></tr></thead>
+        <tbody id="hlog-table"></tbody></table>
+    </div>
+  </div>
+
+  <div id="panel-stations" class="panel">
+    <div class="card">
+      <h2>Users &amp; stations</h2>
+      <p class="msg">A station appears automatically the first time someone logs in with its name, so there is nothing to set up per station — manage people here.</p>
+      <div class="row">
+        <input type="text" id="user-new-name" placeholder="Name">
+        <select id="user-new-role">
+          <option value="operator">operator</option>
+          <option value="lead">lead</option>
+          <option value="admin">admin</option>
+        </select>
+        <input type="text" id="user-new-pin" placeholder="PIN" inputmode="numeric">
+        <button class="primary" id="user-add-btn">Add</button>
+      </div>
+      <div id="users-msg" class="msg"></div>
+      <table><thead><tr><th>Name</th><th>Role</th><th>Active</th><th></th></tr></thead>
+        <tbody id="users-table"></tbody></table>
+    </div>
+  </div>
+  </div>
+
+  <div id="panel-exports" class="panel">
+    <div class="card">
+      <h2>CSV exports (admin)</h2>
+      <div class="row">
+        <button class="secondary" data-export="locations">Download locations.csv</button>
+        <button class="secondary" data-export="notfound">Download notfound.csv</button>
+        <button class="secondary" data-export="events">Download events.csv</button>
+        <button class="secondary" data-export="missingtotes">Download missingtotes.csv</button>
+        <button class="secondary" data-export="aislestock">Download aislestock.csv</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-settings" class="panel">
+    <div class="card">
+      <h2>Layout <span id="layout-lock-note" class="msg"></span></h2>
+      <div class="row" id="layout-form">
+        <div class="field compact"><label>Aisles</label><input type="text" inputmode="numeric" id="lay-aisles"></div>
+        <div class="field compact"><label>Totes per aisle</label><input type="text" inputmode="numeric" id="lay-totesPerAisle"></div>
+        <div class="field compact"><label>Partitions per tote</label><input type="text" inputmode="numeric" id="lay-partitions"></div>
+        <div class="field compact"><label>Last aisle totes</label><input type="text" inputmode="numeric" id="lay-lastAisleTotes"></div>
+        <div class="field compact"><label>Barcodes per partition</label><input type="text" inputmode="numeric" id="lay-cap"></div>
+        <div class="field compact"><label>Spare room %</label><input type="text" inputmode="numeric" id="lay-headroomPct"></div>
+        <div class="field compact"><label>Max PIDs per partition</label><input type="text" inputmode="numeric" id="lay-softPidCap"></div>
+        <div class="field compact"><label>Auto-close share %</label><input type="text" inputmode="numeric" id="lay-autoCloseSharePct"></div>
+        <div class="field compact"><label>Batch size (route)</label><input type="text" inputmode="numeric" id="lay-batchSize"></div>
+      </div>
+      <p class="msg">Eligibility (PLAN.md §5.1) — a dump row is processable only when its <b>status</b> is in the first list AND its <b>availability</b> is in the second. Comma-separated, uppercase.</p>
+      <div class="row">
+        <div class="field"><label>Processable status values</label><input type="text" id="lay-processableStatus" placeholder="AVAILABLE"></div>
+        <div class="field"><label>Processable availability values</label><input type="text" id="lay-processableAvailability" placeholder="NOT_FOUND, NOT_FOUND_HOLD, AVAILABLE"></div>
+      </div>
+      <div class="row"><button class="primary" id="layout-save-btn">Save layout</button><span id="layout-plancap" class="msg"></span></div>
+      <div id="layout-msg" class="msg"></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

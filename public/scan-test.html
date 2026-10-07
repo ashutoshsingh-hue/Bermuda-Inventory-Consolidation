@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Camera scan test</title>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#111;color:#fff}
+video{width:100%;max-height:55vh;background:#000;object-fit:cover}
+#out{font-size:2rem;word-break:break-all;padding:12px;font-weight:700}
+#meta{padding:0 12px;color:#aaa}
+button{font-size:1.1rem;margin:12px;padding:12px 18px}
+.flash{background:#0a7d2c}
+</style></head><body>
+<video id="v" playsinline muted></video>
+<div id="out">Tap Start</div>
+<div id="meta"></div>
+<button id="go">Start camera</button><button id="clr">Clear log</button>
+<pre id="log" style="padding:0 12px;color:#9c9"></pre>
+<script src="/vendor/zxing.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let reader,last='',lastT=0,n=0,t0=0;
+$('go').onclick=async()=>{
+  if(!navigator.mediaDevices){$('out').textContent='No camera API - open via https://';return}
+  const Z=ZXing,h=new Map();
+  h.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39,Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.EAN_8,Z.BarcodeFormat.UPC_A,Z.BarcodeFormat.ITF,Z.BarcodeFormat.QR_CODE]);
+  h.set(Z.DecodeHintType.TRY_HARDER,true);
+  reader=new Z.BrowserMultiFormatReader(h,100);
+  t0=performance.now();
+  try{
+    await reader.decodeFromConstraints({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}},'v',(r)=>{
+      if(!r)return;
+      const code=String(r.getText()),now=performance.now();
+      if(code===last&&now-lastT<1500){lastT=now;return}
+      last=code;lastT=now;n++;
+      $('out').textContent=code;
+      $('meta').textContent=`#${n} format ${Z.BarcodeFormat[r.getBarcodeFormat()]} length ${code.length} +${((now-t0)/1000).toFixed(1)}s`;
+      $('log').textContent=`${code}\n`+$('log').textContent;
+      document.body.classList.add('flash');setTimeout(()=>document.body.classList.remove('flash'),250);
+      if(navigator.vibrate)navigator.vibrate(60);
+      t0=now;
+    });
+    $('out').textContent='Point at a barcode';
+  }catch(e){$('out').textContent='Camera error: '+e.message}
+};
+$('clr').onclick=()=>{$('log').textContent='';n=0};
+</script></body></html>

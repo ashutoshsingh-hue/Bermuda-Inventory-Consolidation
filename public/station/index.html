@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Bermuda Sort Station</title>
+<link rel="stylesheet" href="/shared/ui.css">
+<link rel="stylesheet" href="/station/station.css">
+</head>
+<body>
+
+<div id="offline-overlay" class="offline-overlay hidden">
+  <div>OFFLINE</div>
+  <div style="font-size: 3vw; font-weight: 600;">STOP SCANNING</div>
+</div>
+
+<div id="login-view" class="screen">
+  <h1>Bermuda Sort Station</h1>
+  <div class="field">
+    <label for="station-id">Station</label>
+    <input id="station-id" autocomplete="off" placeholder="e.g. Station 1">
+  </div>
+  <div class="field">
+    <label for="operator-name">Your name</label>
+    <input id="operator-name" autocomplete="off">
+  </div>
+  <div class="field">
+    <label for="pin">PIN</label>
+    <input id="pin" type="password" inputmode="numeric" autocomplete="off">
+  </div>
+  <button id="login-btn">Log in</button>
+  <div id="login-error"></div>
+</div>
+
+<div id="scan-view" class="screen hidden">
+  <div class="topbar">
+    <span><strong id="topbar-station"></strong> · <span id="topbar-operator"></span></span>
+    <button id="logout-btn">Log out</button>
+  </div>
+
+  <div id="current-tote-banner" class="current-tote-banner hidden">
+    <div class="ctb-side ctb-left"><span class="ctb-label">ROUTE</span><span class="ctb-big" id="ctb-route"></span></div>
+    <div class="ctb-mid" id="ctb-mid">
+      <span class="ctb-label">CURRENT TOTE</span>
+      <span class="ctb-num" id="ctb-num"></span>
+      <span class="ctb-progress" id="ctb-progress"></span>
+    </div>
+    <div class="ctb-side ctb-right"><span class="ctb-label">TOTES DONE</span><span class="ctb-big" id="ctb-done"></span></div>
+  </div>
+
+  <div id="capacity-warning-banner" class="capacity-warning-banner hidden">
+    ⚠ <span id="capacity-warning-text"></span> — please flag your lead for a release cycle
+  </div>
+
+  <div id="result-panel" class="result-panel type-idle">
+    <div class="code" id="result-code">SCAN A TOTE</div>
+    <div class="msg" id="result-msg"></div>
+    <div class="sub" id="result-sub"></div>
+  </div>
+
+  <div id="release-nudge" class="release-nudge hidden">
+    <span id="release-nudge-text"></span>
+    <div class="release-nudge-actions">
+      <button id="release-nudge-btn" class="release-nudge-btn">Release now</button>
+      <button id="release-nudge-dismiss" class="release-nudge-dismiss">Not yet</button>
+    </div>
+  </div>
+
+  <input id="scan-input" class="scan-input" autocomplete="off" placeholder="Scan here" autofocus>
+  <button id="cam-btn" class="hidden">Scan with camera</button>
+  <div id="cam-overlay" class="cam-overlay hidden">
+    <video id="cam-video" playsinline muted></video>
+    <button id="cam-close">Close camera</button>
+  </div>
+
+  <div class="actions">
+    <button id="undo-btn">Undo last</button>
+    <button id="finish-btn">Finish tote</button>
+  </div>
+
+  <div id="side-panel">
+    <div id="suggestion" class="suggestion hidden">
+      <div id="suggestion-text"></div>
+      <button id="not-found-btn" class="not-found-btn">Tote not found</button>
+      <div id="not-found-confirm" class="not-found-confirm hidden">
+        <div>Mark this tote NOT FOUND? It will be skipped until someone scans its label again.</div>
+        <select id="not-found-reason">
+          <option>Not at pallet location</option>
+          <option>Pallet not found</option>
+          <option>Tote label missing / damaged</option>
+          <option>Other</option>
+        </select>
+        <div class="actions">
+          <button id="not-found-yes" class="danger">Yes, not found</button>
+          <button id="not-found-no">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tote-queue-wrap" class="tote-queue-wrap hidden">
+      <div class="tote-queue-title">UP NEXT</div>
+      <div id="tote-queue" class="tote-queue"></div>
+    </div>
+
+    <div class="history-head"><span>Location</span><span>PID</span><span>Barcode</span></div>
+    <div id="history" class="history"></div>
+  </div>
+</div>
+
+<script src="/vendor/zxing.min.js"></script>
+<script type="module" src="/station/station.js"></script>
+</body>
+</html>

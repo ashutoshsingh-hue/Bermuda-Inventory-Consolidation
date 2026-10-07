@@ -1,0 +1,42 @@
+/* ===== Bermuda Sort Station — shared look (STRUCTURE.md §8 colour convention) ===== */
+:root {
+  --place: #1e8e3e;
+  --extra: #e8710a;
+  --aside: #5f6368;
+  --error: #d93025;
+  --tote: #8430ce;
+  --bg: #111318;
+  --panel: #1c1f26;
+  --text: #f1f3f4;
+  --muted: #9aa0a6;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font: inherit;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+}
+input {
+  font: inherit;
+}
+
+.hidden { display: none !important; }
+
+.offline-overlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: var(--error);
+  color: #fff;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 8vw; font-weight: 800; letter-spacing: 0.02em; text-align: center;
+  gap: 1rem;
+}

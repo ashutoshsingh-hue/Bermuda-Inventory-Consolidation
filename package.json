@@ -1,0 +1,20 @@
+{
+  "name": "bermuda-sort-station",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Bermuda Sort Station — multi-station server (see PLAN.md and STRUCTURE.md)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/core/*.test.js test/db/*.test.js test/services/*.test.js test/api/*.test.js test/jobs/*.test.js test/replay.test.js test/replayRealDump.test.js test/concurrency.test.js"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^10.1.2",
+    "@fastify/static": "^10.1.5",
+    "better-sqlite3": "^13.0.3",
+    "fastify": "^5.12.5"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+data/
+backups/
+.env
+certs/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.csv
+.claude/settings.local.json
+Monitor-Panel-Revamped/
