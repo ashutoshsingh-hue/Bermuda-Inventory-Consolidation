@@ -96,3 +96,10 @@ button.release { background: var(--extra); color: #fff; padding: 6px 14px; font-
 .dump-modes { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 0.8rem; }
 .dump-modes label { display: block; line-height: 1.35; }
 
+/* collapsible card (aisle stock): heading acts as the toggle */
+details.collapsible > summary{cursor:pointer;list-style:none}
+details.collapsible > summary::-webkit-details-marker{display:none}
+details.collapsible > summary h2{display:inline-block;margin:0}
+details.collapsible > summary h2::before{content:"\25B8  "}
+details.collapsible[open] > summary h2::before{content:"\25BE  "}
+details.collapsible[open] > summary{margin-bottom:.75rem}
