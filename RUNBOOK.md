@@ -64,6 +64,18 @@ npm start
 This opens (and migrates, if needed) `data/bermuda.db`, loads state into memory, and listens
 on `0.0.0.0:8080` (all interfaces) — stations on the LAN reach it at `http://<laptop-ip>:8080`.
 
+**HTTPS and phone camera (same port 8080):** port 8080 answers both `http://` and `https://`.
+Operator PCs keep using `http://<ip>:8080/station/`. A phone opens
+`https://<ip>:8080/station/` — tap past the browser's certificate warning once (self-signed) — logs in
+and taps **Scan with camera**. The camera button only appears on HTTPS (or localhost).
+- The certificate lives in `certs/` (`key.pem`, `cert.pem`; not in git). It is tied to the host's
+  IP/name, so **if the IP changes the HTTPS address stops matching** — regenerate (`deploy\setup-host.ps1`
+  does this, or run `openssl req -x509 -newkey rsa:2048 -nodes -days 825 -keyout certs/key.pem -out certs/cert.pem -subj "/CN=bermuda-sort" -addext "subjectAltName=IP:<ip>,DNS:<name>,IP:127.0.0.1,DNS:localhost"`) and restart.
+- No `certs/` folder = plain HTTP only, camera hidden. To roll back to the old behaviour, rename `certs/` and restart.
+- Internally the app now listens on `127.0.0.1:8081` (port + 1) behind port 8080; do not open 8081 in the firewall.
+- Camera reads are slower than a hardware scanner; test with real labels before relying on it.
+- The decoded text is normalised exactly like a keyboard scan (tote = first 12, barcode = last 12).
+
 **Stop:** `Ctrl+C` in the terminal running it. The server closes the DB connection cleanly on
 shutdown (`SIGINT`/`SIGTERM`).
 

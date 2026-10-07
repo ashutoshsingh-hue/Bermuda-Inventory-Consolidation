@@ -82,6 +82,13 @@ pid,barcode,status,condition,availability,scan_location,tote,tote_simplified,tot
 
 Implemented in `normalize()`. **Test with real labels before go-live.**
 
+### 4.2 Camera scanning (phone / mobile mode)
+
+- The station screen shows a **Scan with camera** button, only when the browser allows a camera (HTTPS or localhost, see §7). It opens the rear camera, decodes with the local ZXing library (`public/vendor/zxing.min.js`; Code 128, Code 39, EAN-13/8, UPC-A, ITF, QR) and hands the text to the same scan call as a hardware scanner (`public/station/camera.js`).
+- The server treats it like any scan: `normalize()` applies the §4.1 rules (tote = first 12, barcode = last 12). The decoded value is always a **string** (never a number). The same code within 2 s is ignored.
+- A phone is just another station: same login, tote offers and locks. No new business rules.
+- Camera reading is slower than a laser scanner and can miss small or glossy labels — use it for overflow or spot work and test with real labels first.
+
 ## 5. Business rules — fixed (change only with owner sign-off)
 
 > **Change log:** 03-Oct-2026, owner-approved — moved to the 60-tote rack / 50-tote batch
@@ -281,6 +288,7 @@ v1 suggested Python FastAPI + PostgreSQL + React. **This build uses Node.js**, b
 | Tests | `node:test` (built in). Unit tests for §5 and a replay test on the sample dump (§10). |
 | Packaging | `npm start` on the laptop. Add a Dockerfile for IT later. |
 | LAN | Server listens on `0.0.0.0:8080`. Stations open `http://<laptop-ip>:8080`. The Windows firewall must allow inbound 8080. Set a fixed IP for the laptop, or a DHCP reservation. |
+| HTTPS (same port) | Port 8080 serves **both** plain HTTP and HTTPS (`src/portMux.js`): the first byte of a connection (0x16 = TLS) decides. Operator PCs keep `http://`; phones use `https://<host>:8080`. The app itself listens on loopback `127.0.0.1:8081` (port + 1) behind it. Needs `certs/key.pem` + `certs/cert.pem` (self-signed, SAN = host name + IPs); if missing, the server falls back to plain HTTP on 8080 and the camera is unavailable. Browsers only allow camera access on HTTPS or localhost. |
 
 If IT mandates a different stack later, `core/` (pure logic) and the API contract (§9) carry over unchanged.
 
