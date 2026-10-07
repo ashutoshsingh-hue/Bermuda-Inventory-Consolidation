@@ -6,54 +6,37 @@ for how the code is laid out.
 
 ---
 
-## 1. First-time setup (on the owner's laptop)
+## 1. First-time setup
 
 ```
 npm install
 copy .env.example .env      # PowerShell: Copy-Item .env.example .env
 ```
 
-Edit `.env` if needed — `PORT` (default 8080), `DB_PATH` (default `data/bermuda.db`).
+Edit `.env` if needed: `PORT` (default 8080), `DB_PATH` (default `data/bermuda.db`), `TZ`.
+Needs Node 20+. For a dedicated always-on PC use `deploy/setup-host.ps1` (see `deploy/README.md`).
 
-**There is no self-registration.** Before the first shift, create at least one admin/lead
-user directly (no admin UI exists to do this yet — that's an open item, see §8):
+**There is no self-registration and no default account.** Create the first admin from the command
+line (the server may be running or stopped):
 
-```js
-// run once with: node -e "...", or save as a scratch .js file and run it
-import('./src/server.js').then(({ buildApp }) => {
-  const ctx = buildApp();
-  ctx.authService.createUser({ name: 'Ashutosh', role: 'admin', pin: '<pick a PIN>' });
-  ctx.authService.createUser({ name: 'Shift B Lead', role: 'lead', pin: '<pick a PIN>' });
-  ctx.db.close();
-});
+```
+node tools/createUser.js "Ashutosh" admin 1234
 ```
 
-Do this while the server is **not** running, or in a second terminal — SQLite in WAL mode
-allows a second short-lived connection safely, but simplest is to seed users before `npm start`.
+After that, log in at `/admin/` and add everyone else under **Users** (name, role, PIN). Roles:
+`operator` (station screen), `lead` (also Route, Handover, Handover log), `admin` (also Dump replace/remove,
+Users, Settings, Exports, backups). People are deactivated, never deleted (past events keep their name);
+the last active admin cannot be deactivated. A station appears automatically the first time someone
+logs in with its id.
 
-## 2. Upgrading to the 60-tote batch model (one-time, 03-Oct-2026, owner-approved)
+## 2. Layout
 
-This version moves from the old 5-aisle/overflow layout to a hard-capped 60-tote rack (3
-aisles × 20 totes × 4 partitions = 240 locations) processed in 50-tote batches (PLAN.md §5.5,
-§6). Follow these steps in order on the laptop that currently runs the server:
-
-1. **Back up the DB first** — see §6. Don't skip this even if the next step looks safe.
-2. **Hand over or release everything currently on the rack.** The migration refuses to
-   silently shrink/reshape a floor that still has real inventory on it (`src/db/migrate.js`'s
-   v3→v4 step checks `locations.used` / `loc_pid` directly) — it'll leave the old layout alone
-   rather than risk discarding data, which just means you won't get the new 240-location
-   capacity until the rack is clear. Use the current `/admin` → Handover tab (or, for a full
-   reset, the admin **Release everything** button) to clear it down to 0 placed.
-3. **Deploy** this version (pull the new code, `npm install` if dependencies changed) and
-   start the server as usual (§3). The DB migration runs automatically on boot.
-4. **Confirm** `/admin` → Settings shows the new shape: 240 locations total (3 aisles × 20
-   totes × 4 partitions), **cap 100**, **headroom 5%** (plan capacity 95), **soft PID cap 20**.
-   If it still shows the old numbers, step 2 wasn't actually clear when the server booted —
-   clear the rack and restart.
-5. **Upload a fresh dump** (`/admin` → Dump) so the backlog reflects the new eligibility
-   settings (`processableStatus`/`processableAvailability`, also under Settings) from the start.
-6. **Start batch 1** — `/admin` → Route → Propose route → Start route — and follow the normal
-   daily flow (§4) from there.
+The rack is 3 aisles x 20 totes x 4 partitions = 240 locations, cap 100 barcodes per partition
+(plan capacity 95), soft cap 20 PIDs per partition, batches of 50 totes (PLAN.md §5.5, §6).
+Location codes run continuously: A1 T01-T20, A2 T21-T40, A3 T41-T60 (for example `A1-T18-P2`).
+Layout edits in `/admin` -> Settings only apply while the rack is empty (the migration that
+renumbered codes on 2026-10-06 was the one exception). Before changing the layout: back up (§6),
+release or clear everything on the rack, then save the layout; restart if Settings still shows old numbers.
 
 ## 3. Start / stop
 
@@ -112,81 +95,74 @@ otherwise station bookmarks/QR codes break every time the laptop reboots.
 
 ## 5. Stations connecting
 
-Each station device (laptop + USB scanner, or Android handheld) opens
-`http://<laptop-ip>:8080/station/` in a browser, logs in with **station id + operator name +
-PIN**, and starts scanning. The scan input auto-focuses; a keyboard-wedge scanner's Enter
-suffix submits it automatically.
+Each station device (PC + USB scanner, or a phone) opens `http://<host>:8080/station/` (phones:
+`https://<host>:8080/station/`, see §3), logs in with **station id + operator name + PIN**, and
+starts scanning. The scan input auto-focuses; a keyboard-wedge scanner's Enter suffix submits it.
+Scans are normalised: tote = first 12 characters, barcode = last 12 (PLAN.md §4.1).
+
+Each idle station is offered its **own** next tote (held from other stations for 2 minutes), so two
+operators never get the same tote. On a monitor at least 760 px wide the screen is fixed to the viewport:
+70% scanner, 30% info, with a top banner showing the route number, the current tote and totes done.
+After changing `public/` files, press Ctrl+F5 on the operator screens (no restart needed); changes in
+`src/` need a server restart.
+
+An **orange EXTRA** result means the barcode belongs to a different tote than the one that is open; it is
+still placed normally and an EXTRA alert is logged.
 
 If the browser tab shows a full red **"OFFLINE — STOP SCANNING"** screen, the station can't
-reach the server — check the laptop is running and the station's WiFi/LAN connection, then
-reload the page once it's back.
+reach the server. Check the host is running and the network, then reload the page.
 
 ## 6. Backups
 
-- Automatic: every night at **22:15**, the server writes a consistent snapshot (via SQLite's
-  online backup API — safe even while the live DB is being written to) to `backups/`, named
-  `bermuda-<timestamp>.db`. Backups older than **14 days** are deleted automatically.
-- Manual backup: stop the server, copy `data/bermuda.db`, `data/bermuda.db-wal` and
-  `data/bermuda.db-shm` together (all three, if present), or run the same backup job by hand:
-  ```
-  node -e "import('./src/jobs/nightlyBackup.js').then(async ({backupOnce}) => { const Database = (await import('better-sqlite3')).default; const db = new Database('data/bermuda.db'); await backupOnce(db, 'backups'); db.close(); })"
-  ```
+- **Automatic:** nightly at **22:15**, and **before every Clear / Remove / Restore**, the server writes a
+  consistent snapshot (SQLite online backup API, safe while writing) to `backups/bermuda-<timestamp>.db`.
+  **Only the newest 2** automatic backups are kept (a safety backup may briefly make it 3).
+  Copy `backups/` off the PC regularly if you need history.
+- **Restore from the UI:** `/admin` -> Dump -> Backups -> Restore (admin). The data being replaced is
+  saved as a backup first. Afterwards, upload the new dump with **continue** to combine both.
+- **Manual copy (server stopped):** copy `data/bermuda.db`, `data/bermuda.db-wal` and `data/bermuda.db-shm`
+  together. Files copied by hand into `backups/` under another name (for example `pre-reset-<date>.db`) are never pruned.
+- **Restore by hand:** stop the server, move the current `data/bermuda.db` (and `-wal`/`-shm`) aside, copy the
+  chosen backup to `data/bermuda.db`, start the server, check `/admin` -> Status.
 
-## 7. Restore from backup
+Events are wiped by Clear / "start fresh" / "Remove everything". Download the **Handover log CSV**
+(`/admin` -> Handover log) first if totals must be kept.
 
-1. Stop the server.
-2. Move the current `data/bermuda.db` (and `-wal`/`-shm` files, if present) aside — don't
-   delete them until the restore is confirmed good.
-3. Copy the chosen file from `backups/` to `data/bermuda.db`.
-4. Start the server (`npm start`). It reloads state from that file on boot.
-5. Check `/admin` → Status to confirm the numbers look right (or run a `recount` check — see
-   `src/services/recount.js`; there's no admin-UI button for it yet, see §8).
+## 7. Dump lifecycle (admin -> Dump tab)
 
-## 7.5 Recovering when the server's data is lost but the floor isn't
+Choose the mode **before** picking the file:
+- **Add to the current data (merge)**: the normal daily upload. New totes are added, waiting totes refreshed, nothing removed.
+- **New dump - continue** (admin): removes the old dump and all activity but keeps what is physically in the aisles;
+  only those barcodes are deducted from the new dump.
+- **New dump - start fresh** (admin): removes everything, including aisle stock.
+- **Remove the current dump** (admin): "keep aisle stock" or "everything".
 
-If `data/bermuda.db` is lost or corrupted beyond the last nightly backup, but the physical
-aisles still hold real, correctly-sorted inventory, don't just reload the day's dump on empty
-state — it'll re-place everything from scratch and lose the physical layout. Instead:
+The file is validated before anything is removed, and a backup is saved first. Users, stations and layout
+settings always survive. Totes an operator couldn't find are listed under the **Not found** tab; scanning the
+tote's label again reinstates it, or a lead clicks "Mark found".
 
-1. Before the loss (routine hygiene): `/admin` → Recovery → **Download current aisle stock**
-   regularly, so you always have a recent `location,pid,barcode,tote` snapshot of what's
-   actually in the aisles.
-2. After the loss: `/admin` → Recovery → **Upload existing aisle stock**, using that snapshot
-   (or, in a pinch, a fresh manual count in the same CSV shape).
-3. Then `/admin` → Dump → upload the normal daily PID Hunter dump on top, as usual.
-
-The dump load reconciles automatically: barcodes it recognizes as already placed don't get
-re-added or flagged as conflicts, and any tote that's now mostly (≥90% by default,
-`settings.autoCloseSharePct`) or fully accounted for auto-closes itself. Totes only partly
-matched are flagged "partly sorted" for a quick rescan rather than force-closed. This is
-independent of, and a better first resort than, restoring an old DB backup — it recovers from
-*today's* floor state, not last night's snapshot.
-
-**Totes marked "not found"** (an operator couldn't locate one physically — `/admin` → Recovery
-→ its own table, or the "Tote not found" button on the station scan screen) are a separate,
-smaller case: that tote's barcodes go on hold until its label is scanned again (which
-reinstates it automatically) or a lead clicks "Mark found".
+*If the data file is lost but the floor isn't:* restore the newest backup (§6). If there is none, start
+fresh and re-place by scanning. The old Recovery tab (aisle-stock upload/download) is gone from the UI;
+`POST /api/preload` and `GET /api/export/aislestock.csv` still exist for scripted use.
 
 ## 8. Known gaps (ask the owner before assuming behavior)
 
-- **No admin UI for creating users** — see §1's workaround. A "Settings → users & PINs" screen
-  is still open (PLAN.md M4).
-- **No handover-interval setting** — handover currently happens whenever the lead clicks
-  Confirm in `/admin`; the "every X hours" config from PLAN.md §6 isn't wired up.
-- **Not-found acknowledgement** isn't a distinct action yet — the not-found list from a
-  finished tote is available via `/admin` → Exports → `notfound.csv`, but PLAN.md's "the
-  finish is provisional-final until acked" doesn't yet have a defined state change.
-- **Recount check** (`src/services/recount.js`) exists and self-heals drifted counts, but has
-  no admin-UI trigger yet — currently only callable from code.
-- **Pilot backup import** (`/admin` has no button for it; call `POST /api/import/pilot`
-  directly) is implemented against the *expected* shape of the pilot's backup JSON but has not
-  been verified against a real exported file from `Bermuda_Sort_Station.html`. Test this before
-  relying on it for the floor migration — though for day-to-day recovery, the preload flow in
-  §7.5 (upload aisle stock, then the normal dump) is the tested path and doesn't depend on this.
+- **Handover interval setting** is not wired up; handover happens when a lead ticks rows and presses Release selected.
+- **Not-found acknowledgement** is not a distinct state; the list is in Exports -> notfound.csv.
+- **Recount** (`src/services/recount.js`) self-heals drifted counts but has no admin button.
+- **Pilot backup import** (`POST /api/import/pilot`, no UI) is untested against a real pilot export.
+- `core/handover.js` `pullOrder` throws if a placed barcode lacks its `loc_pid` row (not hardened; owner decision pending).
+- No login rate limiting or lockout, and the app trusts its network: keep it on the company LAN or behind IT's reverse proxy.
+- An empty-looking partition can occasionally refuse a new PID (NO SPACE) because reservations count toward the
+  20-PIDs-per-partition cap although the map shows current stock only.
 
-## 9. Logs
+## 9. Logs and auto-start
 
-The server logs to stdout (structured JSON, via Fastify's built-in logger) — redirect it to a
-file if you want a persistent log: `npm start > server.log 2>&1`. The `events` table in the
-database is the authoritative, append-only audit trail of every scan/undo/finish/handover —
-export it any time via `/admin` → Exports → `events.csv`.
+The server logs JSON to stdout: `npm start > server.log 2>&1` (PowerShell writes UTF-16; read it with `iconv -f UTF-16`).
+The `events` table is the append-only audit trail of every scan/undo/finish/handover; export it via
+`/admin` -> Exports -> `events.csv`.
+
+Restart on a laptop: stop the node process listening on 8080 (and 8081), then
+`Start-Process cmd '/c','npm start > server.log 2>&1' -WindowStyle Hidden`.
+On the dedicated host, `deploy/setup-host.ps1` registers a startup task with automatic restart:
+`Stop-ScheduledTask BermudaSortStation; Start-ScheduledTask BermudaSortStation`.
