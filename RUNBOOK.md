@@ -141,9 +141,18 @@ The file is validated before anything is removed, and a backup is saved first. U
 settings always survive. Totes an operator couldn't find are listed under the **Not found** tab; scanning the
 tote's label again reinstates it, or a lead clicks "Mark found".
 
-*If the data file is lost but the floor isn't:* restore the newest backup (§6). If there is none, start
-fresh and re-place by scanning. The old Recovery tab (aisle-stock upload/download) is gone from the UI;
-`POST /api/preload` and `GET /api/export/aislestock.csv` still exist for scripted use.
+**Moving progress to a new site (or recovering after data loss) — Dump tab -> "Aisle stock":**
+1. On the old site (admin): **Download aisle stock** (`location,pid,barcode,tote` of everything on the racks).
+2. On the new, empty site: **Upload aisle stock** (lead/admin) *before* the dump. Uploading again replaces an
+   earlier upload that is still on the racks.
+3. Upload the PID Hunter dump with **Add to the current data**. Barcodes already on the racks are not placed
+   again, and totes that are at least `autoCloseSharePct` (90%) sorted close themselves; totes below that are
+   flagged "partly sorted" and stay waiting for their remaining barcodes.
+
+Limits (tested on a real backup: 11,890 barcodes carried over exactly; 35 of 41 done totes closed, 6 stayed
+partial at 82-89%): barcodes already **handed over** are not in the aisle stock file, so if the new dump still
+contains them they come back as waiting. Not-found and set-aside barcodes also return as waiting. Download the
+Handover log CSV from the old site as the record of what was processed.
 
 ## 8. Known gaps (ask the owner before assuming behavior)
 

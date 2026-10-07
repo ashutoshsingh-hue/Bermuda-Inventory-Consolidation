@@ -248,6 +248,32 @@ document.getElementById('dump-upload-btn').addEventListener('click', async () =>
   loadDumpInfo();
 });
 
+// ---------- aisle stock: move what is on the racks to a new site (POST /api/preload) ----------
+document.getElementById('aislestock-download-btn').addEventListener('click', async () => {
+  const res = await fetch('/api/export/aislestock.csv', { headers: { Authorization: `Bearer ${getToken()}` } });
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url; a.download = 'aislestock.csv'; a.click();
+  URL.revokeObjectURL(url);
+});
+
+document.getElementById('aislestock-upload-btn').addEventListener('click', async () => {
+  const fileEl = document.getElementById('aislestock-file');
+  const msg = document.getElementById('aislestock-msg'), report = document.getElementById('aislestock-report');
+  if (!fileEl.files.length) { msg.textContent = 'Choose the aisle stock CSV first'; msg.className = 'msg error'; return; }
+  if (!window.confirm('Load this file as what is physically on the racks? Do this BEFORE uploading the dump.')) return;
+  msg.textContent = 'Uploading...'; msg.className = 'msg';
+  const form = new FormData();
+  form.append('file', fileEl.files[0]);
+  const res = await fetch('/api/preload', { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: form });
+  const body = await res.json();
+  if (!res.ok) { msg.textContent = body.error || 'Upload failed'; msg.className = 'msg error'; return; }
+  msg.textContent = `Loaded ${body.added} barcodes, ${body.pids} PIDs, ${body.locs} locations.` + (body.bad.length ? ` ${body.bad.length} row(s) skipped (see below).` : '');
+  msg.className = 'msg ' + (body.bad.length ? 'error' : 'ok');
+  report.textContent = JSON.stringify(body, null, 2);
+  loadDumpInfo();
+});
+
 async function removeDump(mode) {
   const msg = document.getElementById('dump-remove-msg');
   const what = mode === 'continue'

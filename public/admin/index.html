@@ -109,6 +109,19 @@
       <p class="msg" id="dump-info-text"></p>
     </div>
 
+    <div id="aislestock-card" class="card">
+      <h2>Aisle stock — move progress to a new site</h2>
+      <p class="msg"><b>Step 1.</b> On the OLD site, press "Download aisle stock" (admin) to save what is on the racks now. <b>Step 2.</b> On the NEW (empty) site, upload that file here, <b>before</b> the dump. <b>Step 3.</b> Upload the PID Hunter dump below with "Add to the current data": barcodes already on the racks are not placed again and totes that are already sorted close themselves.</p>
+      <p class="msg">The file needs the columns <code>location, pid, barcode</code> (and <code>tote</code>, which the download includes). Uploading again replaces an earlier upload that is still on the racks.</p>
+      <div class="row">
+        <button class="secondary admin-only" id="aislestock-download-btn">Download aisle stock</button>
+        <input type="file" id="aislestock-file" accept=".csv">
+        <button class="primary" id="aislestock-upload-btn">Upload aisle stock</button>
+      </div>
+      <div id="aislestock-msg" class="msg"></div>
+      <pre id="aislestock-report" style="white-space: pre-wrap; font-size: 0.85rem;"></pre>
+    </div>
+
     <div id="dump-upload-card" class="card">
       <h2>Upload PID Hunter dump</h2>
       <div class="dump-modes">
